@@ -1,0 +1,196 @@
+---
+title: "ad2-evasaoAlunos"
+author: "Antonio Ricardo Marque Junior"
+date: "10 February 2015"
+output: html_document
+---
+```{r}
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+```
+
+A evasão de alunos é um problema recorrente nos cursos da UFCG. A ideia aqui é realizar uma predição para identificar alunos que abandonaram seus respectivos cursos de Ciência da Computação e Engenharia Mecânica. Será realizado um estudo isolado de ambos os cursos e, finalmente, um estudo dos cursos em conjunto. 
+
+Abaixo temos um sumário do nosso dataset, mostrando alguns valores para as variáveis que serão consideradas.
+
+```{r}
+summary(dadosAlunos)
+```
+
+Dentre os departamentos que constam na base de dados, como dito anteriormente, só iremos utilizar os dados de alunos dos cursos de compuação e mecânica
+
+```{r, echo=FALSE}
+levels(dadosAlunos$DEPARTAMENTO)
+```
+
+Lembrando que nossa variável de estudo será a variável COD_EVASAO, que é representada por dois valores: 0 para o caso de não-evasão e 1 para o de evasão.
+
+#CASO 1: CIÊNCIA DA COMPUTAÇÃO.
+
+```{r}
+alunosComp <- subset(dadosAlunos, as.character(dadosAlunos$DEPARTAMENTO) == "UNID. ACAD. DE SISTEMAS E COMPUTAÇÃO")
+```
+
+```{r}
+fit <- rpart(COD_EVASAO ~ SITUACAO, data = alunosComp, method="anova") 
+fancyRpartPlot(fit)
+```
+
+A árvore de decisão gerada acima utilizou a variável SITUACAO, que responde se o aluno foi Aprovado, Reprovado ou Reprovado por falta na disciplina. Podemos observar que os alunos reprovados por falta são fortes candidatos à evadirem do curso, tendo em vista que estes, representando 11% dos alunos deste curso, possuem uma taxa de evasão de 63%.
+Os outros dois grupos (Aprovado e Reprovado) não são tão representativos no que se diz respeito à evasão. Porém ainda parece ser relevante considerar o grupo de alunos reprovados, pois estes possuem uma taxa de evasão de 20%.
+
+```{r}
+fitClass <- rpart(COD_EVASAO ~ MEDIA, data = alunosComp, method="anova")
+fancyRpartPlot(fitClass)
+```
+
+Esta outra árvore considera apenas a variável MEDIA, que representa a média final de um aluno na disciplina. Para ser Aprovado, o aluno precisa possuir média maior ou igual a 5.
+Podemos observar que o nó folha à extrema direita representa o grupo com o maior índice de evasão. Se compararmos com a primeira árvore, esta também possui um nó folha semelhante ao já citado. Ambos representam 11% dos alunos. E analisando a decisão da árvore para ambos os casos, podemos concluir que ambos os nós representam o mesmo grupo de alunos. Com isso, vamos desconsiderar utilizar a variável média, pois a situação do aluno no curso já representa bem o que queremos extrair como informação.
+
+#Analisando o período de ingresso
+
+```{r}
+
+
+alunosComp$PERIODO_INGRESSO <- as.factor(alunosComp$PERIODO_INGRESSO)
+fit <- rpart(COD_EVASAO ~ PERIODO_INGRESSO, data=alunosComp, method="anova")
+fancyRpartPlot(fit)
+```
+
+Para a variável PERIODO_INGRESSO, um fato curioso que podemos notar é que à medida em que se passa os anos o índice de evasão cresce, indicando assim que quanto mais recente no curso for o aluno, maiores são as chances de evasão.
+Sendo assim, temos até agora pelo menos duas variáveis a serem consideradas: PERIODO_INGRESSO e SITUACAO.
+
+Obs.: Também foi testado a variável PERIODO, que diz o período em que a disciplina foi cursada. A árvore de decisão obtida é idêntica a que utiliza apenas a variável PERIODO_INGRESSO. Ao analisar a base de dados novamente, pode-se perceber que PERIODO e PERIODO_INGRESSO possuem os mesmos valores, dando a entender que todas as disciplinas listadas são do primeiro período.
+
+```{r}
+
+alunosComp$PERIODO <- as.factor(alunosComp$PERIODO)
+fit <- rpart(COD_EVASAO ~ PERIODO, data=alunosComp, method="anova")
+fancyRpartPlot(fit)
+```
+
+
+Combinando as variáveis PERIODO e SITUACAO
+```{r}
+fit <- rpart(COD_EVASAO ~ PERIODO + SITUACAO, data=alunosComp, method="class")
+fancyRpartPlot(fit)
+```
+
+Ao combinar as variáveis PERIODO e SITUACAO para gerar a árvore de decisão, o resultado ainda é um pouco redundante, pois já sabemos que alunos reprovados por falta são a maior causa de evasão. No caso dos alunos reprovados, não conseguimos ver com clareza onde eles estão inseridos nos nós folhas à esquerda. Com isso, iremos isolar os alunos reprovados e reprovados por falta deste conjunto de dados. 
+
+
+```{r}
+alunosCompR <- subset(alunosComp, as.character(alunosComp$SITUACAO) == "Reprovado" | as.character(alunosComp$SITUACAO) == "Reprovado por Falta")
+```
+
+Ao isolar os alunos reprovados (seja por falta ou não), será feita uma análise considerando apenas a variável SITUACAO.
+
+```{r}
+fit <- rpart(COD_EVASAO ~ SITUACAO, data=alunosCompR, method="class")
+fancyRpartPlot(fit)
+```
+
+Com isso, o que se pode concluir a partir dos dados fornecidos é que, no curso de computação, quem é reprovado por falta no primeiro período é um forte candidato a fazer parte do percentual de evasão do curso.
+
+
+Após alguns testes com os dados dos alunos reprovados, foi considerada a variável CODIGO, referente ao código da disciplina. A partir daí, foi criada uma nova coluna para analisar quais disciplinas reprovam mais. Na legenda do problema não foi definido o tipo de padrão 
+para os códigos. A única informação que se pôde entender é que os 4 primeiros dígitos (1411) fazem referência ao curso, ou departamento. Os 3 últimos dígitos é que diferenciam as disciplinas umas das outras. Com isso, a coluna DISCIPLINA foi criada para facilitar a comparação na árvore de decisão.
+
+```{r}
+alunosComp$DISCIPLINA <- as.character(alunosComp$CODIGO) 
+alunosComp$DISCIPLINA <- gsub("1411", "", alunosComp$DISCIPLINA)
+alunosComp$DISCIPLINA <- as.factor(alunosComp$DISCIPLINA)
+```
+
+Redefinindo alunosCompR:
+
+```{r}
+alunosCompR <- subset(alunosComp, as.character(alunosComp$SITUACAO) == "Reprovado" | as.character(alunosComp$SITUACAO) == "Reprovado por Falta")                                                                                       
+```
+
+```{r}
+fit <- rpart(COD_EVASAO ~ SITUACAO + DISCIPLINA + PERIODO_INGRESSO, data=alunosCompR, method="class")
+fancyRpartPlot(fit)
+```
+
+Com esta árvore, podemos observar que os reprovados por falta que fazem parte de um certo grupo de disciplinas, tem mais chance de evadir.
+
+
+
+#CASO 2: ENGENHARIA MECÂNICA
+
+```{r}
+alunosMecan <- subset(dadosAlunos, as.character(dadosAlunos$DEPARTAMENTO) == "UNID. ACAD. DE ENGENHARIA MECÂNICA")
+```
+
+Ao analisar os alunos do curso de Mecânica, considerando a variável SITUACAO, obtivemos um resultado diferetente:
+
+```{r}
+fit <- rpart(COD_EVASAO ~ SITUACAO, data=alunosMecan, method="class")
+fancyRpartPlot(fit)
+```
+
+```{r}
+fit <- rpart(COD_EVASAO ~ SITUACAO, data=alunosMecan, method="anova")
+fancyRpartPlot(fit)
+```
+
+Alunos reprovados por nota tem mais chances de evadir que alunos reprovados por falta.
+
+Outra evidência que reforça que alunos reprovados estão mais propícios a evasão seria gerar a árvore considerando a variável média:
+
+```{r}
+fit <- rpart(COD_EVASAO ~ MEDIA, data=alunosMecan, method="anova")
+fancyRpartPlot(fit)
+```
+
+Adicionando uma coluna DISCIPLINA para facilitar a classificação das mesmas.
+```{r}
+alunosMecan$DISCIPLINA <- as.character(alunosMecan$CODIGO)
+alunosMecan$DISCIPLINA <- gsub("1105", "", alunosMecan$DISCIPLINA)
+alunosMecan$DISCIPLINA <- as.factor(alunosMecan$DISCIPLINA)
+```
+
+Número de disciplinas em de mecânica
+```{r}
+factor(alunosMecan$DISCIPLINA)
+```
+
+Extraindo subset de alunos reprovados e reprovados por falta.
+```{r}
+alunosMecanR <- subset(alunosMecan, as.character(alunosMecan$SITUACAO) == "Reprovado" | as.character(alunosMecan$SITUACAO) == "Reprovado por Falta")
+```
+
+```{r}
+fit <- rpart(COD_EVASAO ~ DISCIPLINA, data=alunosMecanR, method="class")
+fancyRpartPlot(fit)
+```
+
+Esta análise considera apenas a variável DISCIPLINA, que acaba de ser criada para facilitar o entendimento. Podemos observar que para algumas das disciplinas cursadas, o índice de evasão é zero. Já para outras, o índice de evasão já é bem considerável, caracterizando o nó à direita como um grupo propenso à evasão.
+
+Anova
+```{r}
+fit <- rpart(COD_EVASAO ~ DISCIPLINA + PERIODO_INGRESSO + SITUACAO, data=alunosMecanR, method="anova")
+fancyRpartPlot(fit)
+```
+
+Class
+```{r}
+fit <- rpart(COD_EVASAO ~ DISCIPLINA + PERIODO_INGRESSO + SITUACAO, data=alunosMecanR, method="class")
+fancyRpartPlot(fit)
+```
+
+A partir desta última análise, pôde-se perceber que a variável PERIODO_INGRESSO foi mais relevante para as tomadas de decisões que as variáveis DISCIPLINA e SITUAÇÃO, dando a entender que os alunos que ingressaram nos anos anteriores a 2012 provavelmente irão deixar o curso.
+
+
+Predicão para Engenharia Mecânica:
+
+
+
+#3 - Predição para ambos os cursos: Engenharia Mecânica e Ciência da Computação.
+
+
+
+
